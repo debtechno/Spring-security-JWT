@@ -1,8 +1,12 @@
 package com.auth.springAuthentication.controller;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.logging.Logger;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -13,6 +17,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.crypto.bcrypt.BCrypt;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -35,6 +40,7 @@ import com.auth.springAuthentication.service.JwtUtil;
 import com.auth.springAuthentication.service.MyUserDetailService;
 import com.auth.springAuthentication.configure.SecurityConfigurer;
 import com.auth.springAuthentication.filters.JwtRequestFilter;
+import com.auth.springAuthentication.managers.SpringAuthenticationManager;
 
 
 @CrossOrigin(origins="http://localhost:3000")
@@ -42,37 +48,28 @@ import com.auth.springAuthentication.filters.JwtRequestFilter;
 @RequestMapping("/secure/auth")
 @EnableWebSecurity
 public class UserController{
-	@Autowired
+	@Autowired	
 	private AuthenticationManager am;
 	@Autowired
-	UserRepository userRepository;
-	//private RegistrationService registrationService; 
+	private UserRepository userRepository;	 
 	@Autowired
-	JwtUtil jwtTokenUtil;
+	private JwtUtil jwtTokenUtil;
 	@Autowired
-	MyUserDetailService ms;
-	/*@Autowired
-	private JwtRequestFilter jwtRequestFilter;*/
-	
-	
-	
-	/*@Bean
-	public PasswordEncoder passwordEncoder() {
-		return new BCryptPasswordEncoder();
-	}*/
-	
-	 
+	private MyUserDetailService ms;
+		 
 	@PostMapping("/user/add")
 	public User save(@RequestBody User user) throws Exception{
 		String userId = user.getUserId();
 		if(userId != null && !userId.isEmpty()) {
 			User userObj = ms.loadUserByUsername(userId);
 			if(userObj != null) { 
-				throw new Exception("user with "+userId+" is already exist");
+				throw new Exception("user with "+userId+" already exist");
 			}
 		}
 		User userObj = null;
 		user.setStatus("active");
+		String hashedPassword=generateHash(user.getPassword());
+		user.setPassword(hashedPassword);
 		userObj = ms.save(user);
 		return userObj;	
 	}
@@ -80,40 +77,32 @@ public class UserController{
 	@PostMapping("/loginUser")
 	public User loginUser(@RequestBody User user) throws Exception {
 		String userId = user.getUserId();
-		String tempPassword = user.getPassword();
-		User userObj = null;
-		if(userId != null && tempPassword != null) {
-			userObj = ms.loadUserByUsername(userId);
-		}
-		if(userObj == null) {
-				throw new Exception("Bad Credentials");	
-		}
-		return userObj;
+		String tempPassword = user.getPassword();		
+		AuthenticationRequest ar=new AuthenticationRequest(user.getUserId(), 
+				user.getPassword());
+		ResponseEntity<?> userA=createAuthenticationToken(ar);
+		Logger.global.info("The response entity is :"+userA);
+		return user;
+	}
+	
+	public String generateHash(String password) {
+		BCryptPasswordEncoder bcryptPasswordEncoder = new BCryptPasswordEncoder();		
+		return bcryptPasswordEncoder.encode(password);
 	}
 	
 	
-	@RequestMapping(value = "/authenticate", method=RequestMethod.POST)
 	public ResponseEntity<?> createAuthenticationToken(@RequestBody AuthenticationRequest ar) throws Exception{
-		try {
-			SecurityConfigurer sc = new SecurityConfigurer(userRepository);
-			this.am=sc.authenticationManagerBean();
+		try {	
+		
 			am.authenticate(new UsernamePasswordAuthenticationToken(ar.getUserId(), ar.getPassword()));
 		} catch (BadCredentialsException e) {
 			// TODO Auto-generated catch block
 			throw new Exception("Incorrect username or password!"+e);
 		}
-		final User user = ms.loadUserByUsername(ar.getUserId());
+		User user = new User();
+		user.setUserId(ar.getUserId());
 		final String jwt=jwtTokenUtil.generateToken(user);
 		return ResponseEntity.ok(new AuthenticationResponse(jwt));
 	}
 
-	/*@Bean
-	public CorsConfigurationSource corsConfigurationSource() {
-		CorsConfiguration configuration = new CorsConfiguration();
-		configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000"));
-		configuration.setAllowedMethods(Arrays.asList("GET","POST"));
-		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-		source.registerCorsConfiguration("/**", configuration);
-		return source;
-	}*/
 }

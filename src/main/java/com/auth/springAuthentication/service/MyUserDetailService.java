@@ -24,5 +24,6 @@ public class MyUserDetailService implements UserDetailsService{
 		ur.save(user);
 		return user;
 	}
+	
 
 }
